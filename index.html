@@ -1,0 +1,2038 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DeepCast — Fishing Simulator</title>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;700;900&family=Rajdhani:wght@300;400;500;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+<style>
+/* ============================================================
+   RESET & ROOT VARIABLES
+   ============================================================ */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg-deep:    #030a12;
+  --bg-mid:     #061525;
+  --bg-surface: #0a2035;
+  --bg-panel:   #0d2a42;
+  --bg-card:    #0f3050;
+
+  --neon-cyan:  #00f5ff;
+  --neon-blue:  #0080ff;
+  --neon-teal:  #00e5cc;
+  --neon-aqua:  #00bcd4;
+  --accent-warm:#ff9d00;
+  --danger:     #ff3366;
+  --success:    #00ff88;
+
+  --rarity-common:    #9e9e9e;
+  --rarity-uncommon:  #4caf50;
+  --rarity-rare:      #2196f3;
+  --rarity-epic:      #9c27b0;
+  --rarity-legendary: #ffc107;
+  --rarity-mythic:    #ff4081;
+
+  --text-primary:  #e0f4ff;
+  --text-secondary: #7ab8d4;
+  --text-dim:      #3a6f8f;
+
+  --font-display: 'Orbitron', monospace;
+  --font-body:    'Rajdhani', sans-serif;
+  --font-mono:    'Share Tech Mono', monospace;
+
+  --border-glow: rgba(0,245,255,0.2);
+  --shadow-neon: 0 0 20px rgba(0,245,255,0.3), 0 0 40px rgba(0,245,255,0.1);
+  --radius-sm: 6px;
+  --radius-md: 12px;
+  --radius-lg: 20px;
+}
+
+html, body {
+  width: 100%; height: 100%;
+  background: var(--bg-deep);
+  color: var(--text-primary);
+  font-family: var(--font-body);
+  font-size: 16px;
+  overflow: hidden;
+  user-select: none;
+}
+
+/* ============================================================
+   BACKGROUND — ANIMATED OCEAN DEPTH
+   ============================================================ */
+#ocean-bg {
+  position: fixed; inset: 0; z-index: 0;
+  background:
+    radial-gradient(ellipse 120% 60% at 50% 120%, #001a2e 0%, transparent 70%),
+    radial-gradient(ellipse 80% 40% at 20% 80%, #00152590 0%, transparent 60%),
+    radial-gradient(ellipse 60% 30% at 80% 90%, #00253a80 0%, transparent 50%),
+    linear-gradient(180deg, #020c16 0%, #03121e 40%, #041828 100%);
+  overflow: hidden;
+}
+#ocean-bg::before {
+  content: '';
+  position: absolute; inset: 0;
+  background-image:
+    radial-gradient(1px 1px at 10% 20%, rgba(0,245,255,0.4) 0%, transparent 100%),
+    radial-gradient(1px 1px at 30% 50%, rgba(0,245,255,0.3) 0%, transparent 100%),
+    radial-gradient(1px 1px at 60% 15%, rgba(0,200,255,0.5) 0%, transparent 100%),
+    radial-gradient(1px 1px at 80% 40%, rgba(0,245,255,0.3) 0%, transparent 100%),
+    radial-gradient(1px 1px at 45% 70%, rgba(100,200,255,0.4) 0%, transparent 100%),
+    radial-gradient(2px 2px at 90% 10%, rgba(0,245,255,0.6) 0%, transparent 100%),
+    radial-gradient(1px 1px at 15% 85%, rgba(0,180,255,0.3) 0%, transparent 100%);
+  animation: twinkle 4s ease-in-out infinite alternate;
+}
+#ocean-bg::after {
+  content: '';
+  position: absolute;
+  bottom: 0; left: -50%; right: -50%; height: 200px;
+  background: linear-gradient(180deg, transparent 0%, rgba(0,40,80,0.4) 50%, rgba(0,20,40,0.6) 100%);
+  border-radius: 50% 50% 0 0 / 80px 80px 0 0;
+  animation: wave 8s ease-in-out infinite;
+}
+@keyframes twinkle {
+  0%   { opacity: 0.6; }
+  100% { opacity: 1; }
+}
+@keyframes wave {
+  0%, 100% { transform: translateX(0) scaleY(1); }
+  50%       { transform: translateX(2%) scaleY(1.05); }
+}
+
+.bubble {
+  position: absolute;
+  border-radius: 50%;
+  background: radial-gradient(circle at 30% 30%, rgba(0,245,255,0.4), rgba(0,245,255,0.05));
+  border: 1px solid rgba(0,245,255,0.2);
+  animation: rise linear infinite;
+  pointer-events: none;
+}
+@keyframes rise {
+  0%   { transform: translateY(110vh) translateX(0) scale(1); opacity: 0; }
+  10%  { opacity: 1; }
+  90%  { opacity: 0.6; }
+  100% { transform: translateY(-10vh) translateX(30px) scale(0.5); opacity: 0; }
+}
+
+/* ============================================================
+   SCREENS / LAYOUT
+   ============================================================ */
+#app {
+  position: relative; z-index: 1;
+  width: 100%; height: 100%;
+  display: flex; align-items: center; justify-content: center;
+}
+
+.screen {
+  display: none;
+  width: 100%; height: 100%;
+  position: absolute; inset: 0;
+  align-items: center; justify-content: center;
+  animation: fadeIn 0.4s ease;
+}
+.screen.active { display: flex; }
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ============================================================
+   PANEL / CARD
+   ============================================================ */
+.panel {
+  background: linear-gradient(135deg, rgba(13,42,66,0.95) 0%, rgba(9,28,48,0.98) 100%);
+  border: 1px solid var(--border-glow);
+  border-radius: var(--radius-lg);
+  backdrop-filter: blur(20px);
+  box-shadow: var(--shadow-neon), inset 0 1px 0 rgba(0,245,255,0.1);
+  padding: 32px;
+  position: relative;
+  overflow: hidden;
+}
+.panel::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 10%; right: 10%; height: 1px;
+  background: linear-gradient(90deg, transparent, var(--neon-cyan), transparent);
+}
+
+.card {
+  background: rgba(15,48,80,0.7);
+  border: 1px solid rgba(0,245,255,0.12);
+  border-radius: var(--radius-md);
+  padding: 16px;
+  transition: all 0.2s;
+}
+.card:hover {
+  border-color: rgba(0,245,255,0.4);
+  background: rgba(15,48,80,0.9);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(0,0,0,0.3), 0 0 16px rgba(0,245,255,0.1);
+}
+
+/* ============================================================
+   TYPOGRAPHY
+   ============================================================ */
+.logo {
+  font-family: var(--font-display);
+  font-weight: 900;
+  font-size: clamp(2rem, 5vw, 3.5rem);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  background: linear-gradient(135deg, var(--neon-cyan) 0%, var(--neon-blue) 50%, var(--neon-teal) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  filter: drop-shadow(0 0 20px rgba(0,245,255,0.5));
+  line-height: 1;
+}
+.logo-sub {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  letter-spacing: 0.3em;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  margin-top: 4px;
+}
+h2 {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 1.3rem;
+  letter-spacing: 0.1em;
+  color: var(--neon-cyan);
+  text-transform: uppercase;
+  text-shadow: 0 0 20px rgba(0,245,255,0.5);
+}
+h3 {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 1rem;
+  color: var(--text-primary);
+}
+label {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.15em;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  display: block;
+  margin-bottom: 6px;
+}
+
+/* ============================================================
+   BUTTONS
+   ============================================================ */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  padding: 12px 28px;
+  border: none; border-radius: var(--radius-sm);
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 0.75rem;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: all 0.2s;
+  position: relative;
+  overflow: hidden;
+}
+.btn::after {
+  content: '';
+  position: absolute; inset: 0;
+  background: rgba(255,255,255,0);
+  transition: background 0.15s;
+}
+.btn:hover::after { background: rgba(255,255,255,0.07); }
+.btn:active { transform: scale(0.97); }
+
+.btn-primary {
+  background: linear-gradient(135deg, #005577 0%, #007799 100%);
+  color: var(--neon-cyan);
+  border: 1px solid rgba(0,245,255,0.4);
+  box-shadow: 0 0 16px rgba(0,245,255,0.2), inset 0 1px 0 rgba(0,245,255,0.15);
+}
+.btn-primary:hover {
+  box-shadow: 0 0 24px rgba(0,245,255,0.4), inset 0 1px 0 rgba(0,245,255,0.2);
+  border-color: rgba(0,245,255,0.7);
+}
+
+.btn-neon {
+  background: transparent;
+  color: var(--neon-cyan);
+  border: 1px solid var(--neon-cyan);
+  box-shadow: 0 0 10px rgba(0,245,255,0.2);
+  font-size: 0.65rem;
+  padding: 8px 16px;
+}
+.btn-neon:hover {
+  background: rgba(0,245,255,0.1);
+  box-shadow: 0 0 20px rgba(0,245,255,0.4);
+}
+
+.btn-danger {
+  background: linear-gradient(135deg, #550022 0%, #880033 100%);
+  color: var(--danger);
+  border: 1px solid rgba(255,51,102,0.4);
+}
+
+.btn-success {
+  background: linear-gradient(135deg, #005522 0%, #007733 100%);
+  color: var(--success);
+  border: 1px solid rgba(0,255,136,0.4);
+}
+
+.btn-lg {
+  padding: 16px 40px;
+  font-size: 0.9rem;
+  border-radius: var(--radius-md);
+}
+
+.btn-icon {
+  font-size: 1.1rem;
+}
+
+/* ============================================================
+   INPUTS
+   ============================================================ */
+input[type="text"], input[type="password"] {
+  width: 100%;
+  background: rgba(0,20,35,0.8);
+  border: 1px solid rgba(0,245,255,0.2);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 0.9rem;
+  padding: 10px 14px;
+  outline: none;
+  transition: all 0.2s;
+}
+input:focus {
+  border-color: var(--neon-cyan);
+  box-shadow: 0 0 12px rgba(0,245,255,0.2);
+}
+
+select {
+  background: rgba(0,20,35,0.8);
+  border: 1px solid rgba(0,245,255,0.2);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  padding: 8px 12px;
+  outline: none;
+  cursor: pointer;
+}
+select:focus { border-color: var(--neon-cyan); }
+
+/* ============================================================
+   SCROLLBAR
+   ============================================================ */
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: rgba(0,20,35,0.5); }
+::-webkit-scrollbar-thumb { background: rgba(0,245,255,0.3); border-radius: 2px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(0,245,255,0.6); }
+
+/* ============================================================
+   TOAST / NOTIFICATIONS
+   ============================================================ */
+#toast-container {
+  position: fixed; bottom: 24px; right: 24px; z-index: 9999;
+  display: flex; flex-direction: column-reverse; gap: 8px;
+  pointer-events: none;
+}
+.toast {
+  background: var(--bg-panel);
+  border: 1px solid rgba(0,245,255,0.3);
+  border-radius: var(--radius-sm);
+  padding: 10px 18px;
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  color: var(--text-primary);
+  box-shadow: var(--shadow-neon);
+  animation: toastIn 0.3s ease, toastOut 0.3s ease 2.7s forwards;
+  max-width: 320px;
+}
+.toast.success { border-color: rgba(0,255,136,0.5); color: var(--success); }
+.toast.error   { border-color: rgba(255,51,102,0.5); color: var(--danger); }
+.toast.gold    { border-color: rgba(255,193,7,0.5);  color: var(--accent-warm); }
+@keyframes toastIn  { from { opacity:0; transform:translateX(20px); } to { opacity:1; transform:translateX(0); } }
+@keyframes toastOut { from { opacity:1; } to { opacity:0; } }
+
+/* ============================================================
+   LOADING SCREEN
+   ============================================================ */
+#screen-loading {
+  flex-direction: column;
+  gap: 24px;
+}
+.loading-ring {
+  width: 80px; height: 80px;
+  border-radius: 50%;
+  border: 3px solid rgba(0,245,255,0.1);
+  border-top-color: var(--neon-cyan);
+  border-right-color: var(--neon-teal);
+  animation: spin 1s linear infinite;
+  box-shadow: 0 0 20px rgba(0,245,255,0.3);
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.loading-text {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  letter-spacing: 0.2em;
+  animation: pulse 1.5s ease-in-out infinite;
+}
+@keyframes pulse { 0%,100%{opacity:0.5} 50%{opacity:1} }
+
+/* ============================================================
+   MAIN MENU
+   ============================================================ */
+#screen-menu {
+  flex-direction: column;
+  gap: 0;
+}
+.menu-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 32px;
+  padding: 40px 20px;
+}
+.menu-logo-area {
+  text-align: center;
+}
+.menu-fish-icon {
+  font-size: 4rem;
+  display: block;
+  animation: fishBob 3s ease-in-out infinite;
+  filter: drop-shadow(0 0 20px rgba(0,245,255,0.6));
+}
+@keyframes fishBob {
+  0%,100% { transform: translateY(0) rotate(-5deg); }
+  50%      { transform: translateY(-10px) rotate(5deg); }
+}
+.menu-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 280px;
+}
+.menu-btn {
+  display: flex; align-items: center; gap: 14px;
+  padding: 14px 24px;
+  background: rgba(13,42,66,0.8);
+  border: 1px solid rgba(0,245,255,0.15);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  font-family: var(--font-display);
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: all 0.2s;
+  text-align: left;
+}
+.menu-btn:hover {
+  background: rgba(0,245,255,0.08);
+  border-color: rgba(0,245,255,0.5);
+  transform: translateX(6px);
+  box-shadow: -4px 0 0 var(--neon-cyan), 0 0 20px rgba(0,245,255,0.15);
+}
+.menu-btn .icon { font-size: 1.3rem; min-width: 24px; }
+.menu-version {
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  color: var(--text-dim);
+  letter-spacing: 0.2em;
+}
+.player-hud {
+  display: flex; align-items: center; gap: 16px;
+  background: rgba(0,10,20,0.6);
+  border: 1px solid rgba(0,245,255,0.1);
+  border-radius: var(--radius-md);
+  padding: 10px 18px;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+.hud-stat { display: flex; align-items: center; gap: 6px; }
+.hud-val  { color: var(--neon-cyan); font-weight: bold; }
+
+/* ============================================================
+   LOGIN / SIGNUP
+   ============================================================ */
+#screen-auth {
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+.auth-panel {
+  width: 100%;
+  max-width: 380px;
+}
+.auth-tabs {
+  display: flex;
+  margin-bottom: 24px;
+  border-bottom: 1px solid rgba(0,245,255,0.15);
+}
+.auth-tab {
+  flex: 1; padding: 10px;
+  background: none; border: none;
+  font-family: var(--font-display);
+  font-size: 0.75rem;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  cursor: pointer;
+  transition: all 0.2s;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+}
+.auth-tab.active {
+  color: var(--neon-cyan);
+  border-bottom-color: var(--neon-cyan);
+}
+.auth-form { display: flex; flex-direction: column; gap: 16px; }
+.form-group { display: flex; flex-direction: column; gap: 6px; }
+.auth-error {
+  color: var(--danger);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  text-align: center;
+  min-height: 1em;
+}
+
+/* ============================================================
+   FISHING SCREEN
+   ============================================================ */
+#screen-fishing {
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+}
+.fishing-layout {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+  width: 100%;
+  max-width: 600px;
+  padding: 20px;
+}
+.fishing-scene {
+  width: 100%;
+  height: 220px;
+  background: linear-gradient(180deg, rgba(0,20,40,0.3) 0%, rgba(0,40,80,0.4) 100%);
+  border: 1px solid rgba(0,245,255,0.1);
+  border-radius: var(--radius-lg);
+  position: relative;
+  overflow: hidden;
+}
+.water-surface {
+  position: absolute;
+  bottom: 0; left: 0; right: 0; height: 160px;
+  background: linear-gradient(180deg, rgba(0,100,180,0.15) 0%, rgba(0,40,100,0.3) 100%);
+  border-top: 2px solid rgba(0,245,255,0.3);
+}
+.water-surface::before {
+  content: '';
+  position: absolute;
+  top: 0; left: -100%; right: -100%; height: 4px;
+  background: repeating-linear-gradient(
+    90deg,
+    transparent 0%, rgba(0,245,255,0.4) 10%, transparent 20%
+  );
+  animation: waterWave 3s linear infinite;
+}
+@keyframes waterWave { 0%{transform:translateX(0)} 100%{transform:translateX(50%)} }
+
+.fishing-rod {
+  position: absolute;
+  top: 10px; left: 50%;
+  transform: translateX(-50%);
+  width: 4px; height: 60px;
+  background: linear-gradient(180deg, #a0784a 0%, #c9a060 100%);
+  border-radius: 2px;
+  transform-origin: top center;
+  transform: translateX(-50%) rotate(15deg);
+}
+.fishing-line {
+  position: absolute;
+  top: 65px; left: calc(50% + 20px);
+  width: 2px;
+  background: linear-gradient(180deg, rgba(200,200,200,0.6) 0%, rgba(200,200,200,0.2) 100%);
+  transform-origin: top center;
+}
+.fishing-bob {
+  position: absolute;
+  width: 14px; height: 14px;
+  background: radial-gradient(circle at 35% 35%, #ff6060, #cc0000);
+  border-radius: 50%;
+  box-shadow: 0 0 8px rgba(255,0,0,0.5);
+  transform: translateX(-50%);
+  left: calc(50% + 22px);
+  animation: bobFloat 1.5s ease-in-out infinite;
+}
+@keyframes bobFloat {
+  0%,100%{transform:translateX(-50%) translateY(0)} 50%{transform:translateX(-50%) translateY(4px)}
+}
+.fish-shadow {
+  position: absolute;
+  font-size: 2rem;
+  opacity: 0;
+  transition: all 0.5s;
+  animation: fishSwim 6s linear infinite;
+  bottom: 30px;
+  filter: drop-shadow(0 0 8px currentColor);
+}
+@keyframes fishSwim {
+  0%   { left: -5%; transform: scaleX(1); opacity:0; }
+  5%   { opacity: 0.6; }
+  45%  { left: 48%; opacity:0.6; }
+  50%  { left: 50%; transform: scaleX(-1); opacity:0.6; }
+  95%  { opacity: 0.6; }
+  100% { left: 105%; transform: scaleX(-1); opacity:0; }
+}
+
+.fishing-status {
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  text-align: center;
+  min-height: 1.5em;
+}
+.fishing-status.bite { color: var(--accent-warm); animation: flash 0.3s ease 3; }
+.fishing-status.caught { color: var(--success); }
+.fishing-status.missed { color: var(--danger); }
+@keyframes flash { 0%,100%{opacity:1} 50%{opacity:0} }
+
+/* ---- MINIGAME ---- */
+#minigame-container {
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+}
+#minigame-container.active { display: flex; }
+
+.minigame-bar-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+}
+.minigame-bar {
+  flex: 1;
+  height: 40px;
+  background: rgba(0,10,20,0.8);
+  border: 1px solid rgba(0,245,255,0.2);
+  border-radius: 20px;
+  position: relative;
+  overflow: hidden;
+}
+.minigame-zone {
+  position: absolute;
+  height: 100%;
+  background: linear-gradient(90deg, rgba(0,255,136,0.3), rgba(0,255,136,0.5), rgba(0,255,136,0.3));
+  border-left: 2px solid var(--success);
+  border-right: 2px solid var(--success);
+  transition: left 0.05s;
+  border-radius: 20px;
+}
+.minigame-marker {
+  position: absolute;
+  top: 4px; bottom: 4px;
+  width: 6px;
+  background: white;
+  border-radius: 3px;
+  box-shadow: 0 0 8px rgba(255,255,255,0.8);
+  transition: left 0.03s;
+}
+.minigame-progress-text {
+  font-family: var(--font-display);
+  font-size: 0.9rem;
+  color: var(--neon-cyan);
+  min-width: 50px;
+  text-align: right;
+}
+.minigame-fish-name {
+  font-family: var(--font-display);
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+}
+.minigame-hint {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--text-dim);
+}
+
+/* ---- FISHING ACTIONS ---- */
+.fishing-actions {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+/* ---- XP BAR ---- */
+.xp-bar-container {
+  width: 100%;
+  display: flex; align-items: center; gap: 10px;
+}
+.xp-bar-bg {
+  flex: 1;
+  height: 8px;
+  background: rgba(0,20,40,0.8);
+  border: 1px solid rgba(0,245,255,0.1);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.xp-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--neon-teal), var(--neon-cyan));
+  border-radius: 4px;
+  transition: width 0.5s ease;
+  box-shadow: 0 0 8px rgba(0,245,255,0.4);
+}
+.xp-bar-label {
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+/* ============================================================
+   FISH CATCH REVEAL (MODAL)
+   ============================================================ */
+#catch-modal {
+  display: none;
+  position: fixed; inset: 0;
+  z-index: 500;
+  background: rgba(0,0,0,0.8);
+  backdrop-filter: blur(8px);
+  align-items: center;
+  justify-content: center;
+}
+#catch-modal.active { display: flex; animation: fadeIn 0.3s; }
+.catch-card {
+  padding: 40px;
+  text-align: center;
+  max-width: 360px;
+  width: 90%;
+  animation: catchReveal 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+@keyframes catchReveal {
+  from { opacity:0; transform: scale(0.5) translateY(30px); }
+  to   { opacity:1; transform: scale(1) translateY(0); }
+}
+.catch-fish-emoji {
+  font-size: 5rem;
+  display: block;
+  margin-bottom: 12px;
+  animation: catchBounce 0.6s cubic-bezier(0.175,0.885,0.32,1.275) 0.2s both;
+}
+@keyframes catchBounce {
+  from { transform: scale(0) rotate(-20deg); }
+  to   { transform: scale(1) rotate(0); }
+}
+.catch-new-badge {
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  letter-spacing: 0.2em;
+  padding: 3px 10px;
+  border-radius: 20px;
+  margin-bottom: 8px;
+  display: inline-block;
+}
+.catch-fish-name {
+  font-family: var(--font-display);
+  font-weight: 900;
+  font-size: 1.8rem;
+  letter-spacing: 0.05em;
+  margin-bottom: 6px;
+}
+.catch-rarity-tag {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.2em;
+  padding: 4px 14px;
+  border-radius: 20px;
+  border: 1px solid;
+  display: inline-block;
+  margin-bottom: 16px;
+  text-transform: uppercase;
+}
+.catch-stats {
+  display: flex;
+  gap: 20px;
+  justify-content: center;
+  margin-bottom: 20px;
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+}
+.catch-stat-val { font-size: 1.1rem; font-weight: bold; }
+
+/* ============================================================
+   INVENTORY (in fishing screen bottom)
+   ============================================================ */
+.inventory-panel {
+  width: 100%;
+  max-height: 180px;
+  overflow-y: auto;
+}
+.inventory-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+  gap: 8px;
+}
+.inv-item {
+  background: rgba(0,10,20,0.6);
+  border: 1px solid rgba(0,245,255,0.1);
+  border-radius: var(--radius-sm);
+  padding: 8px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.2s;
+  position: relative;
+}
+.inv-item:hover { border-color: rgba(0,245,255,0.4); }
+.inv-item .fish-icon { font-size: 1.5rem; display: block; }
+.inv-item .fish-name { font-family: var(--font-mono); font-size: 0.55rem; color: var(--text-secondary); margin-top: 2px; display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.inv-item .fish-count { position: absolute; top: 2px; right: 4px; font-family: var(--font-mono); font-size: 0.6rem; color: var(--neon-cyan); }
+.inv-empty { text-align: center; color: var(--text-dim); font-family: var(--font-mono); font-size: 0.75rem; padding: 20px; }
+
+/* ============================================================
+   MARKET
+   ============================================================ */
+#screen-market {
+  flex-direction: column;
+  overflow-y: auto;
+}
+.market-layout {
+  width: 100%; max-width: 700px;
+  padding: 24px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+.market-header {
+  display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;
+}
+.market-coins {
+  display: flex; align-items: center; gap: 8px;
+  font-family: var(--font-display);
+  font-size: 1rem;
+  color: var(--accent-warm);
+}
+.market-grid {
+  display: flex; flex-direction: column; gap: 8px;
+  max-height: calc(100vh - 280px);
+  overflow-y: auto;
+  padding-right: 4px;
+}
+.market-item {
+  display: flex; align-items: center; gap: 14px;
+  background: rgba(0,10,20,0.6);
+  border: 1px solid rgba(0,245,255,0.1);
+  border-radius: var(--radius-sm);
+  padding: 12px 16px;
+  transition: all 0.2s;
+}
+.market-item:hover { border-color: rgba(0,245,255,0.3); }
+.market-item .fish-icon { font-size: 1.8rem; min-width: 36px; text-align: center; }
+.market-item-info { flex: 1; }
+.market-item-name { font-family: var(--font-display); font-size: 0.85rem; font-weight: 600; }
+.market-item-detail { font-family: var(--font-mono); font-size: 0.65rem; color: var(--text-secondary); margin-top: 2px; }
+.market-item-price { font-family: var(--font-mono); font-size: 0.9rem; color: var(--accent-warm); min-width: 70px; text-align: right; }
+.market-item-qty { display: flex; align-items: center; gap: 6px; }
+.qty-btn { width: 24px; height: 24px; background: rgba(0,245,255,0.1); border: 1px solid rgba(0,245,255,0.2); border-radius: 4px; color: var(--neon-cyan); cursor: pointer; font-size: 1rem; display: flex; align-items: center; justify-content: center; transition: all 0.15s; }
+.qty-btn:hover { background: rgba(0,245,255,0.2); }
+.qty-display { font-family: var(--font-mono); font-size: 0.8rem; min-width: 20px; text-align: center; }
+.market-sell-btn { padding: 6px 14px; font-size: 0.65rem; }
+.market-empty { text-align: center; color: var(--text-dim); font-family: var(--font-mono); font-size: 0.8rem; padding: 40px; }
+
+/* ============================================================
+   FISH INDEX
+   ============================================================ */
+#screen-index {
+  flex-direction: column;
+  overflow-y: auto;
+}
+.index-layout {
+  width: 100%; max-width: 750px;
+  padding: 24px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+.index-controls {
+  display: flex; gap: 10px; flex-wrap: wrap;
+}
+.index-search { flex: 1; min-width: 150px; }
+.index-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 12px;
+  max-height: calc(100vh - 260px);
+  overflow-y: auto;
+  padding-right: 4px;
+}
+.index-card {
+  background: rgba(0,10,20,0.7);
+  border-radius: var(--radius-md);
+  padding: 16px;
+  text-align: center;
+  border: 1px solid rgba(0,245,255,0.1);
+  transition: all 0.2s;
+  position: relative;
+  overflow: hidden;
+}
+.index-card:hover { transform: translateY(-3px); }
+.index-card.locked { opacity: 0.35; filter: grayscale(0.8); }
+.index-card-emoji { font-size: 2.5rem; display: block; margin-bottom: 8px; }
+.index-card-name { font-family: var(--font-display); font-size: 0.75rem; font-weight: 700; margin-bottom: 6px; }
+.index-card-rarity { font-family: var(--font-mono); font-size: 0.6rem; letter-spacing: 0.15em; text-transform: uppercase; }
+.index-card-stats { margin-top: 8px; display: flex; flex-direction: column; gap: 2px; font-family: var(--font-mono); font-size: 0.6rem; color: var(--text-secondary); }
+.index-caught-badge {
+  position: absolute; top: 6px; right: 6px;
+  width: 16px; height: 16px;
+  background: var(--success);
+  border-radius: 50%;
+  font-size: 0.6rem;
+  display: flex; align-items: center; justify-content: center;
+}
+
+/* ============================================================
+   LEADERBOARD
+   ============================================================ */
+#screen-leaderboard {
+  flex-direction: column;
+  overflow-y: auto;
+}
+.lb-layout {
+  width: 100%; max-width: 600px;
+  padding: 24px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+.lb-tabs {
+  display: flex; gap: 8px;
+}
+.lb-tab { padding: 8px 16px; font-size: 0.65rem; }
+.lb-list { display: flex; flex-direction: column; gap: 8px; max-height: 400px; overflow-y: auto; }
+.lb-row {
+  display: flex; align-items: center; gap: 14px;
+  background: rgba(0,10,20,0.6);
+  border: 1px solid rgba(0,245,255,0.1);
+  border-radius: var(--radius-sm);
+  padding: 12px 16px;
+}
+.lb-rank { font-family: var(--font-display); font-size: 1rem; font-weight: 900; min-width: 30px; }
+.lb-rank.gold    { color: var(--rarity-legendary); text-shadow: 0 0 10px var(--rarity-legendary); }
+.lb-rank.silver  { color: #c0c0c0; }
+.lb-rank.bronze  { color: #cd7f32; }
+.lb-name { flex: 1; font-family: var(--font-display); font-size: 0.85rem; }
+.lb-val  { font-family: var(--font-mono); font-size: 0.85rem; color: var(--neon-cyan); }
+.lb-you  { border-color: rgba(0,245,255,0.4); background: rgba(0,40,80,0.4); }
+.lb-empty { text-align: center; color: var(--text-dim); font-family: var(--font-mono); font-size: 0.8rem; padding: 40px; }
+
+/* ============================================================
+   BACK BUTTON
+   ============================================================ */
+.back-btn {
+  position: absolute;
+  top: 16px; left: 16px;
+  background: rgba(0,20,35,0.8);
+  border: 1px solid rgba(0,245,255,0.2);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  padding: 8px 14px;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex; align-items: center; gap: 6px;
+  z-index: 10;
+}
+.back-btn:hover { border-color: rgba(0,245,255,0.5); color: var(--neon-cyan); }
+
+/* ============================================================
+   RARITY STYLES (shared)
+   ============================================================ */
+.rarity-common    { color: var(--rarity-common);    border-color: var(--rarity-common);    }
+.rarity-uncommon  { color: var(--rarity-uncommon);  border-color: var(--rarity-uncommon);  }
+.rarity-rare      { color: var(--rarity-rare);      border-color: var(--rarity-rare);      }
+.rarity-epic      { color: var(--rarity-epic);      border-color: var(--rarity-epic);      }
+.rarity-legendary { color: var(--rarity-legendary); border-color: var(--rarity-legendary); }
+.rarity-mythic    { background: linear-gradient(90deg,#ff4081,#7c4dff,#40c4ff,#69f0ae,#ffff00,#ff4081); -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text; animation: rainbowShift 2s linear infinite; background-size: 300%; }
+@keyframes rainbowShift { 0%{background-position:0%} 100%{background-position:300%} }
+
+.glow-common    { box-shadow: 0 0 10px rgba(158,158,158,0.3); }
+.glow-uncommon  { box-shadow: 0 0 10px rgba(76,175,80,0.4); }
+.glow-rare      { box-shadow: 0 0 12px rgba(33,150,243,0.5); }
+.glow-epic      { box-shadow: 0 0 14px rgba(156,39,176,0.5); }
+.glow-legendary { box-shadow: 0 0 18px rgba(255,193,7,0.6); }
+.glow-mythic    { box-shadow: 0 0 20px rgba(255,64,129,0.6), 0 0 40px rgba(124,77,255,0.3); animation: mythicGlow 2s ease-in-out infinite; }
+@keyframes mythicGlow { 0%,100%{box-shadow:0 0 20px rgba(255,64,129,0.6),0 0 40px rgba(124,77,255,0.3)} 50%{box-shadow:0 0 30px rgba(64,196,255,0.7),0 0 60px rgba(105,240,174,0.3)} }
+
+/* ============================================================
+   RESPONSIVE
+   ============================================================ */
+@media (max-width: 500px) {
+  .panel { padding: 20px; }
+  .fishing-layout { padding: 12px; gap: 14px; }
+  .menu-nav { width: 250px; }
+  .index-grid { grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); }
+}
+</style>
+</head>
+<body>
+
+<!-- OCEAN BACKGROUND -->
+<div id="ocean-bg"></div>
+
+<!-- APP ROOT -->
+<div id="app">
+
+  <!-- LOADING -->
+  <div id="screen-loading" class="screen active">
+    <span style="font-size:3rem;animation:fishBob 2s ease-in-out infinite">🎣</span>
+    <div class="loading-ring"></div>
+    <div class="loading-text">INITIALIZING DEEPCAST...</div>
+  </div>
+
+  <!-- MAIN MENU -->
+  <div id="screen-menu" class="screen">
+    <div class="menu-container">
+      <div class="menu-logo-area">
+        <span class="menu-fish-icon">🎣</span>
+        <div class="logo">DeepCast</div>
+        <div class="logo-sub">Ocean Fishing Simulator</div>
+      </div>
+      <div id="player-hud" class="player-hud" style="display:none">
+        <div class="hud-stat">👤 <span id="hud-name" class="hud-val">—</span></div>
+        <div class="hud-stat">⭐ Lv.<span id="hud-level" class="hud-val">1</span></div>
+        <div class="hud-stat">🪙 <span id="hud-coins" class="hud-val">0</span></div>
+        <div class="hud-stat">🐟 <span id="hud-fish" class="hud-val">0</span></div>
+      </div>
+      <nav class="menu-nav">
+        <button class="menu-btn" onclick="goFish()"><span class="icon">🎣</span> Fish</button>
+        <button class="menu-btn" onclick="showScreen('leaderboard')"><span class="icon">🏆</span> Leaderboard</button>
+        <button class="menu-btn" onclick="showScreen('market')"><span class="icon">🛒</span> Market</button>
+        <button class="menu-btn" onclick="showScreen('index')"><span class="icon">📖</span> Fish Index</button>
+        <button class="menu-btn" id="menu-auth-btn" onclick="showAuthScreen()"><span class="icon">👤</span> <span id="menu-auth-label">Login / Signup</span></button>
+      </nav>
+      <div class="menu-version">v1.0.0 — All data stored in the deep</div>
+    </div>
+  </div>
+
+  <!-- AUTH -->
+  <div id="screen-auth" class="screen">
+    <div class="panel auth-panel">
+      <div class="auth-tabs">
+        <button class="auth-tab active" id="tab-login" onclick="switchTab('login')">Login</button>
+        <button class="auth-tab" id="tab-signup" onclick="switchTab('signup')">Sign Up</button>
+      </div>
+      <div class="auth-form" id="auth-form-login">
+        <div class="form-group">
+          <label>Username</label>
+          <input type="text" id="login-username" placeholder="your_username" autocomplete="off">
+        </div>
+        <div class="form-group">
+          <label>Password</label>
+          <input type="password" id="login-password" placeholder="••••••••">
+        </div>
+        <div class="auth-error" id="login-error"></div>
+        <button class="btn btn-primary btn-lg" onclick="doLogin()">DIVE IN</button>
+      </div>
+      <div class="auth-form" id="auth-form-signup" style="display:none">
+        <div class="form-group">
+          <label>Username</label>
+          <input type="text" id="signup-username" placeholder="choose_username" autocomplete="off">
+        </div>
+        <div class="form-group">
+          <label>Password</label>
+          <input type="password" id="signup-password" placeholder="••••••••">
+        </div>
+        <div class="form-group">
+          <label>Confirm Password</label>
+          <input type="password" id="signup-confirm" placeholder="••••••••">
+        </div>
+        <div class="auth-error" id="signup-error"></div>
+        <button class="btn btn-primary btn-lg" onclick="doSignup()">CREATE ACCOUNT</button>
+      </div>
+    </div>
+    <button class="back-btn" onclick="showScreen('menu')">← Back</button>
+  </div>
+
+  <!-- FISHING -->
+  <div id="screen-fishing" class="screen">
+    <button class="back-btn" onclick="stopFishing()">← Menu</button>
+    <div class="fishing-layout">
+      <!-- XP Bar -->
+      <div class="xp-bar-container">
+        <div class="xp-bar-label">LVL <span id="fish-level">1</span></div>
+        <div class="xp-bar-bg"><div class="xp-bar-fill" id="xp-bar" style="width:0%"></div></div>
+        <div class="xp-bar-label"><span id="xp-current">0</span>/<span id="xp-next">100</span> XP</div>
+      </div>
+
+      <!-- Scene -->
+      <div class="fishing-scene" id="fishing-scene">
+        <div class="water-surface"></div>
+        <div class="fishing-rod"></div>
+        <div class="fishing-line" id="fishing-line" style="height:60px;display:none"></div>
+        <div class="fishing-bob" id="fishing-bob" style="display:none"></div>
+        <div class="fish-shadow" id="fish-shadow">🐟</div>
+      </div>
+
+      <!-- Status -->
+      <div class="fishing-status" id="fishing-status">Cast your line to begin!</div>
+
+      <!-- Minigame -->
+      <div id="minigame-container">
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:center">
+          <div class="minigame-fish-name" id="mg-fish-name">Fish!</div>
+          <div class="catch-rarity-tag" id="mg-rarity-tag">Common</div>
+        </div>
+        <div class="minigame-bar-wrapper">
+          <div class="minigame-bar" id="mg-bar">
+            <div class="minigame-zone" id="mg-zone"></div>
+            <div class="minigame-marker" id="mg-marker"></div>
+          </div>
+          <div class="minigame-progress-text" id="mg-progress">0%</div>
+        </div>
+        <div class="minigame-hint">Hold SPACE / Tap to pull the rod up · Release to let line drop</div>
+      </div>
+
+      <!-- Actions -->
+      <div class="fishing-actions">
+        <button class="btn btn-primary" id="cast-btn" onclick="startFishing()">🎣 Cast Line</button>
+        <button class="btn btn-neon" onclick="showScreen('market')">🛒 Market</button>
+      </div>
+
+      <!-- Inventory -->
+      <div class="panel inventory-panel" style="padding:16px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+          <h3>Inventory <span style="font-family:var(--font-mono);font-size:0.7rem;color:var(--text-secondary)">(<span id="inv-count">0</span> fish)</span></h3>
+          <span style="font-family:var(--font-mono);font-size:0.75rem;color:var(--accent-warm)">🪙 <span id="inv-coins">0</span></span>
+        </div>
+        <div class="inventory-grid" id="inventory-grid">
+          <div class="inv-empty">No fish yet — cast your line!</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MARKET -->
+  <div id="screen-market" class="screen">
+    <button class="back-btn" onclick="showScreen('menu')">← Back</button>
+    <div class="market-layout">
+      <div class="market-header">
+        <h2>🛒 Market</h2>
+        <div class="market-coins">🪙 <span id="market-coins">0</span> coins</div>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <input type="text" id="market-search" placeholder="🔍 Search fish..." style="flex:1;min-width:140px" oninput="renderMarket()">
+        <button class="btn btn-success" onclick="sellAll()">Sell All</button>
+      </div>
+      <div class="panel" style="padding:16px;background:rgba(0,10,20,0.4)">
+        <div style="font-family:var(--font-mono);font-size:0.7rem;color:var(--text-secondary);margin-bottom:8px">⚡ Market prices fluctuate with supply &amp; demand</div>
+        <div class="market-grid" id="market-grid">
+          <div class="market-empty">No fish to sell!</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- FISH INDEX -->
+  <div id="screen-index" class="screen">
+    <button class="back-btn" onclick="showScreen('menu')">← Back</button>
+    <div class="index-layout">
+      <h2>📖 Fish Index</h2>
+      <div class="index-controls">
+        <input type="text" id="index-search" class="index-search" placeholder="🔍 Search..." oninput="renderIndex()">
+        <select id="index-rarity-filter" onchange="renderIndex()">
+          <option value="">All Rarities</option>
+          <option value="Common">Common</option>
+          <option value="Uncommon">Uncommon</option>
+          <option value="Rare">Rare</option>
+          <option value="Epic">Epic</option>
+          <option value="Legendary">Legendary</option>
+          <option value="Mythic">Mythic</option>
+        </select>
+        <select id="index-sort" onchange="renderIndex()">
+          <option value="rarity">Sort: Rarity</option>
+          <option value="value">Sort: Value</option>
+          <option value="xp">Sort: XP</option>
+          <option value="name">Sort: Name</option>
+        </select>
+      </div>
+      <div class="index-grid" id="index-grid"></div>
+    </div>
+  </div>
+
+  <!-- LEADERBOARD -->
+  <div id="screen-leaderboard" class="screen">
+    <button class="back-btn" onclick="showScreen('menu')">← Back</button>
+    <div class="lb-layout">
+      <h2>🏆 Leaderboard</h2>
+      <div class="lb-tabs">
+        <button class="btn btn-neon lb-tab active" id="lb-tab-coins" onclick="switchLbTab('coins')">💰 Coins</button>
+        <button class="btn btn-neon lb-tab" id="lb-tab-level" onclick="switchLbTab('level')">⭐ Level</button>
+        <button class="btn btn-neon lb-tab" id="lb-tab-caught" onclick="switchLbTab('caught')">🐟 Catches</button>
+      </div>
+      <div class="panel" style="padding:16px">
+        <div class="lb-list" id="lb-list"></div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- CATCH MODAL -->
+<div id="catch-modal">
+  <div class="panel catch-card" id="catch-card">
+    <div class="catch-new-badge" id="catch-new-badge" style="display:none">✨ FIRST CATCH!</div>
+    <span class="catch-fish-emoji" id="catch-emoji">🐟</span>
+    <div class="catch-fish-name" id="catch-name">Fish</div>
+    <div class="catch-rarity-tag" id="catch-rarity">Common</div>
+    <div class="catch-stats">
+      <div><div class="catch-stat-val" id="catch-xp">+0 XP</div><div style="font-size:0.65rem;color:var(--text-secondary)">Experience</div></div>
+      <div><div class="catch-stat-val" id="catch-val">0🪙</div><div style="font-size:0.65rem;color:var(--text-secondary)">Market Value</div></div>
+    </div>
+    <button class="btn btn-primary" onclick="closeCatchModal()">Continue Fishing</button>
+  </div>
+</div>
+
+<!-- TOAST CONTAINER -->
+<div id="toast-container"></div>
+
+<script>
+// ============================================================
+// CONSTANTS & FISH DATABASE
+// ============================================================
+const API_BASE = 'https://super-sun-34c3.ninjafan138.workers.dev';
+
+const RARITIES = ['Common','Uncommon','Rare','Epic','Legendary','Mythic'];
+const RARITY_WEIGHTS = [55, 25, 12, 5, 2.5, 0.5]; // percentage chances
+const RARITY_XP_MULT = [1, 2, 4, 8, 16, 40];
+const RARITY_COIN_MULT = [1, 2, 4, 10, 25, 100];
+const RARITY_DIFFICULTY = [0.55, 0.48, 0.40, 0.32, 0.25, 0.18]; // zone size ratio
+
+const FISH_DATABASE = [
+  // COMMON
+  { id:'bluegill',       name:'Bluegill',        emoji:'🐟', rarity:'Common',    baseXP:10,  baseCoins:5   },
+  { id:'catfish',        name:'Catfish',          emoji:'🐡', rarity:'Common',    baseXP:12,  baseCoins:6   },
+  { id:'carp',           name:'Carp',             emoji:'🐠', rarity:'Common',    baseXP:8,   baseCoins:4   },
+  { id:'perch',          name:'Perch',            emoji:'🦈', rarity:'Common',    baseXP:10,  baseCoins:5   },
+  { id:'bass',           name:'Bass',             emoji:'🐟', rarity:'Common',    baseXP:15,  baseCoins:8   },
+  // UNCOMMON
+  { id:'trout',          name:'Rainbow Trout',    emoji:'🐠', rarity:'Uncommon',  baseXP:30,  baseCoins:20  },
+  { id:'pike',           name:'Northern Pike',    emoji:'🦈', rarity:'Uncommon',  baseXP:35,  baseCoins:25  },
+  { id:'walleye',        name:'Walleye',          emoji:'🐡', rarity:'Uncommon',  baseXP:28,  baseCoins:18  },
+  { id:'crappie',        name:'Crappie',          emoji:'🐟', rarity:'Uncommon',  baseXP:25,  baseCoins:16  },
+  // RARE
+  { id:'salmon',         name:'King Salmon',      emoji:'🐠', rarity:'Rare',      baseXP:80,  baseCoins:70  },
+  { id:'muskie',         name:'Muskellunge',      emoji:'🦈', rarity:'Rare',      baseXP:90,  baseCoins:80  },
+  { id:'striper',        name:'Striped Bass',     emoji:'🐡', rarity:'Rare',      baseXP:75,  baseCoins:65  },
+  // EPIC
+  { id:'swordfish',      name:'Swordfish',        emoji:'🗡️', rarity:'Epic',      baseXP:200, baseCoins:250 },
+  { id:'mako',           name:'Mako Shark',       emoji:'🦈', rarity:'Epic',      baseXP:220, baseCoins:300 },
+  { id:'tuna',           name:'Bluefin Tuna',     emoji:'🐟', rarity:'Epic',      baseXP:180, baseCoins:220 },
+  // LEGENDARY
+  { id:'oarfish',        name:'Giant Oarfish',    emoji:'🐍', rarity:'Legendary', baseXP:600, baseCoins:900 },
+  { id:'coelecanth',     name:'Coelacanth',       emoji:'🐠', rarity:'Legendary', baseXP:700, baseCoins:1200 },
+  { id:'marlin',         name:'Black Marlin',     emoji:'🗡️', rarity:'Legendary', baseXP:650, baseCoins:1000 },
+  // MYTHIC
+  { id:'kraken',         name:'Baby Kraken',      emoji:'🦑', rarity:'Mythic',    baseXP:2000, baseCoins:5000 },
+  { id:'leviathan',      name:'Leviathan Eel',    emoji:'🐉', rarity:'Mythic',    baseXP:2500, baseCoins:8000 },
+  { id:'celestialfish',  name:'Celestial Fish',   emoji:'✨', rarity:'Mythic',    baseXP:3000, baseCoins:10000 },
+];
+
+function getFishById(id) { return FISH_DATABASE.find(f => f.id === id); }
+function getFishByRarity(rarity) { return FISH_DATABASE.filter(f => f.rarity === rarity); }
+
+function getMarketPrice(fishId, globalStats) {
+  const fish = getFishById(fishId);
+  if (!fish) return 0;
+  const base = fish.baseCoins;
+  // supply/demand adjustment
+  const globalCatches = (globalStats && globalStats.fishCounts && globalStats.fishCounts[fishId]) || 0;
+  const demandMult = Math.max(0.4, 1 - (globalCatches * 0.001));
+  return Math.max(1, Math.round(base * demandMult));
+}
+
+// XP required to reach next level
+function xpForLevel(level) { return Math.floor(100 * Math.pow(1.4, level - 1)); }
+function levelFromXP(xp) {
+  let lvl = 1;
+  let total = 0;
+  while (true) {
+    const needed = xpForLevel(lvl);
+    if (total + needed > xp) return { level: lvl, xpInLevel: xp - total, xpNeeded: needed };
+    total += needed;
+    lvl++;
+  }
+}
+
+// ============================================================
+// GAME STATE
+// ============================================================
+let gameData = null;   // full data from server
+let currentUser = null; // logged-in username
+let session = null;    // simple session token
+
+function getPlayer() {
+  if (!currentUser || !gameData) return null;
+  return gameData.players[currentUser];
+}
+
+function getOrCreatePlayer(username) {
+  if (!gameData.players[username]) {
+    gameData.players[username] = {
+      passwordHash: '',
+      coins: 0,
+      xp: 0,
+      inventory: {},  // fishId -> count
+      totalCaught: 0,
+      createdAt: Date.now(),
+    };
+  }
+  return gameData.players[username];
+}
+
+// ============================================================
+// API — BACKEND BRIDGE
+// ============================================================
+async function apiLoad() {
+  const res = await fetch(`${API_BASE}/load`);
+  if (!res.ok) throw new Error('Failed to load data');
+  return await res.json();
+}
+
+async function apiSave(data) {
+  const res = await fetch(`${API_BASE}/save`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) throw new Error('Failed to save data');
+  return await res.json();
+}
+
+function defaultData() {
+  return {
+    players: {},
+    globalStats: {
+      fishCounts: {},
+      totalCaught: 0,
+    },
+    marketPrices: {},
+    version: 1,
+  };
+}
+
+// Simple hash (client-side, not secure — but no server-side code)
+async function hashPassword(pass) {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(pass + 'deepcast_salt'));
+  return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('');
+}
+
+// ============================================================
+// SESSION
+// ============================================================
+function saveSession(username) {
+  session = { username, ts: Date.now() };
+  localStorage.setItem('deepcast_session', JSON.stringify(session));
+}
+function loadSession() {
+  try {
+    const s = JSON.parse(localStorage.getItem('deepcast_session') || 'null');
+    if (s && s.username) return s;
+  } catch {}
+  return null;
+}
+function clearSession() {
+  session = null;
+  localStorage.removeItem('deepcast_session');
+}
+
+// ============================================================
+// INIT
+// ============================================================
+async function init() {
+  createBubbles();
+  showScreen('loading');
+  try {
+    const loaded = await apiLoad();
+    gameData = (loaded && loaded.players) ? loaded : defaultData();
+  } catch(e) {
+    gameData = defaultData();
+    toast('Could not reach server — offline mode', 'error');
+  }
+
+  // Restore session
+  const savedSession = loadSession();
+  if (savedSession && gameData.players[savedSession.username]) {
+    currentUser = savedSession.username;
+    session = savedSession;
+  }
+
+  updateMenuHUD();
+  showScreen('menu');
+}
+
+// ============================================================
+// SCREENS
+// ============================================================
+function showScreen(name) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById('screen-' + name).classList.add('active');
+  if (name === 'market')      renderMarket();
+  if (name === 'index')       renderIndex();
+  if (name === 'leaderboard') renderLeaderboard('coins');
+  if (name === 'fishing')     renderFishingScreen();
+}
+
+function showAuthScreen() {
+  if (currentUser) {
+    // Logout
+    currentUser = null;
+    clearSession();
+    updateMenuHUD();
+    toast('Logged out', 'success');
+  } else {
+    showScreen('auth');
+  }
+}
+
+function updateMenuHUD() {
+  const hud = document.getElementById('player-hud');
+  const label = document.getElementById('menu-auth-label');
+  if (currentUser && getPlayer()) {
+    const p = getPlayer();
+    const { level } = levelFromXP(p.xp);
+    hud.style.display = 'flex';
+    document.getElementById('hud-name').textContent = currentUser;
+    document.getElementById('hud-level').textContent = level;
+    document.getElementById('hud-coins').textContent = p.coins;
+    document.getElementById('hud-fish').textContent = p.totalCaught;
+    label.textContent = 'Logout';
+  } else {
+    hud.style.display = 'none';
+    label.textContent = 'Login / Signup';
+  }
+}
+
+// ============================================================
+// AUTH
+// ============================================================
+function switchTab(tab) {
+  document.getElementById('tab-login').classList.toggle('active', tab === 'login');
+  document.getElementById('tab-signup').classList.toggle('active', tab === 'signup');
+  document.getElementById('auth-form-login').style.display = tab === 'login' ? 'flex' : 'none';
+  document.getElementById('auth-form-signup').style.display = tab === 'signup' ? 'flex' : 'none';
+}
+
+async function doLogin() {
+  const username = document.getElementById('login-username').value.trim().toLowerCase();
+  const password = document.getElementById('login-password').value;
+  const err = document.getElementById('login-error');
+  err.textContent = '';
+  if (!username || !password) { err.textContent = 'All fields required.'; return; }
+  if (!gameData.players[username]) { err.textContent = 'Username not found.'; return; }
+  const hash = await hashPassword(password);
+  if (gameData.players[username].passwordHash !== hash) { err.textContent = 'Incorrect password.'; return; }
+  currentUser = username;
+  saveSession(username);
+  updateMenuHUD();
+  toast(`Welcome back, ${username}!`, 'success');
+  showScreen('menu');
+}
+
+async function doSignup() {
+  const username = document.getElementById('signup-username').value.trim().toLowerCase();
+  const password = document.getElementById('signup-password').value;
+  const confirm  = document.getElementById('signup-confirm').value;
+  const err = document.getElementById('signup-error');
+  err.textContent = '';
+  if (!username || !password) { err.textContent = 'All fields required.'; return; }
+  if (username.length < 3) { err.textContent = 'Username must be 3+ characters.'; return; }
+  if (password.length < 6) { err.textContent = 'Password must be 6+ characters.'; return; }
+  if (password !== confirm) { err.textContent = 'Passwords do not match.'; return; }
+  if (gameData.players[username]) { err.textContent = 'Username already taken.'; return; }
+  const hash = await hashPassword(password);
+  const player = getOrCreatePlayer(username);
+  player.passwordHash = hash;
+  currentUser = username;
+  saveSession(username);
+  await saveGame();
+  updateMenuHUD();
+  toast(`Welcome to DeepCast, ${username}!`, 'success');
+  showScreen('menu');
+}
+
+// ============================================================
+// FISHING SYSTEM
+// ============================================================
+let fishingState = 'idle'; // idle | waiting | minigame
+let fishingTimer = null;
+let currentFish = null;
+
+// Minigame state
+let mg = {
+  active: false,
+  markerPos: 0.5,    // 0-1
+  zonePos: 0.3,      // 0-1
+  zoneSize: 0.25,    // 0-1
+  markerVel: 0,
+  zoneVel: 0.003,
+  holding: false,
+  progress: 0,       // 0-100
+  animFrame: null,
+};
+
+function goFish() {
+  if (!currentUser) {
+    toast('Login to start fishing!', 'error');
+    showScreen('auth');
+    return;
+  }
+  showScreen('fishing');
+}
+
+function renderFishingScreen() {
+  const p = getPlayer();
+  if (!p) return;
+  const { level, xpInLevel, xpNeeded } = levelFromXP(p.xp);
+  document.getElementById('fish-level').textContent = level;
+  document.getElementById('xp-current').textContent = xpInLevel;
+  document.getElementById('xp-next').textContent = xpNeeded;
+  document.getElementById('xp-bar').style.width = ((xpInLevel / xpNeeded) * 100) + '%';
+  document.getElementById('inv-coins').textContent = p.coins;
+  renderInventory();
+}
+
+function stopFishing() {
+  cancelMinigame();
+  fishingState = 'idle';
+  if (fishingTimer) clearTimeout(fishingTimer);
+  document.getElementById('cast-btn').disabled = false;
+  document.getElementById('fishing-line').style.display = 'none';
+  document.getElementById('fishing-bob').style.display = 'none';
+  document.getElementById('minigame-container').classList.remove('active');
+  setFishingStatus('Cast your line to begin!', '');
+  showScreen('menu');
+}
+
+function startFishing() {
+  if (!currentUser) { toast('Login first!', 'error'); return; }
+  if (fishingState !== 'idle') return;
+  fishingState = 'waiting';
+  document.getElementById('cast-btn').disabled = true;
+  document.getElementById('fishing-line').style.display = 'block';
+  document.getElementById('fishing-bob').style.display = 'block';
+  document.getElementById('minigame-container').classList.remove('active');
+  setFishingStatus('Waiting for a bite... 🎣', '');
+
+  // Random wait 1-5 seconds
+  const p = getPlayer();
+  const { level } = levelFromXP(p.xp);
+  const waitMs = Math.random() * 4000 + 1000 - (level * 50);
+  fishingTimer = setTimeout(fishBites, Math.max(800, waitMs));
+}
+
+function fishBites() {
+  currentFish = rollFish();
+  fishingState = 'minigame';
+  setFishingStatus(`A ${currentFish.name} is biting! 🎣`, 'bite');
+  // Animate fish shadow
+  const shadow = document.getElementById('fish-shadow');
+  shadow.textContent = currentFish.emoji;
+
+  // Start minigame after brief delay
+  setTimeout(() => startMinigame(currentFish), 600);
+}
+
+function rollFish() {
+  const p = getPlayer();
+  const { level } = levelFromXP(p.xp);
+
+  // Level bonus: shift weights slightly toward rarer fish
+  let weights = [...RARITY_WEIGHTS];
+  const shift = Math.min(level * 0.1, 5);
+  weights[0] = Math.max(20, weights[0] - shift * 2);
+  weights[1] = Math.max(15, weights[1] - shift);
+  weights[2] += shift * 0.5;
+  weights[3] += shift * 0.5;
+  weights[4] += shift * 0.4;
+  weights[5] += shift * 0.2;
+
+  const total = weights.reduce((a,b) => a+b, 0);
+  let r = Math.random() * total;
+  let rarityIdx = 0;
+  for (let i = 0; i < weights.length; i++) {
+    r -= weights[i];
+    if (r <= 0) { rarityIdx = i; break; }
+  }
+  const rarity = RARITIES[rarityIdx];
+  const pool = getFishByRarity(rarity);
+  return pool[Math.floor(Math.random() * pool.length)];
+}
+
+// ---- MINIGAME ----
+function startMinigame(fish) {
+  const rarityIdx = RARITIES.indexOf(fish.rarity);
+  mg.active = true;
+  mg.progress = 0;
+  mg.markerPos = 0.5;
+  mg.markerVel = 0;
+  mg.zonePos = 0.2;
+  mg.zoneSize = RARITY_DIFFICULTY[rarityIdx];
+  mg.zoneVel = 0.003 + rarityIdx * 0.001;
+  mg.holding = false;
+
+  // Update UI
+  document.getElementById('mg-fish-name').textContent = fish.name;
+  const rarityTag = document.getElementById('mg-rarity-tag');
+  rarityTag.textContent = fish.rarity;
+  rarityTag.className = `catch-rarity-tag rarity-${fish.rarity.toLowerCase()}`;
+  document.getElementById('minigame-container').classList.add('active');
+  document.getElementById('mg-progress').textContent = '0%';
+
+  // Key / touch listeners
+  document.addEventListener('keydown', mgKeyDown);
+  document.addEventListener('keyup', mgKeyUp);
+  document.getElementById('mg-bar').addEventListener('mousedown', mgMouseDown);
+  document.getElementById('mg-bar').addEventListener('mouseup', mgMouseUp);
+  document.getElementById('mg-bar').addEventListener('touchstart', mgTouchStart);
+  document.getElementById('mg-bar').addEventListener('touchend', mgTouchEnd);
+
+  mg.animFrame = requestAnimationFrame(minigameLoop);
+}
+
+function mgKeyDown(e) { if (e.code === 'Space') { e.preventDefault(); mg.holding = true; } }
+function mgKeyUp(e)   { if (e.code === 'Space') mg.holding = false; }
+function mgMouseDown() { mg.holding = true; }
+function mgMouseUp()   { mg.holding = false; }
+function mgTouchStart(e) { e.preventDefault(); mg.holding = true; }
+function mgTouchEnd(e)   { e.preventDefault(); mg.holding = false; }
+
+let lastTime = 0;
+function minigameLoop(ts) {
+  if (!mg.active) return;
+  const dt = Math.min((ts - lastTime) / 1000, 0.05);
+  lastTime = ts;
+
+  // Marker physics
+  const gravity = 2.5;
+  const pull = 7;
+  mg.markerVel += mg.holding ? -pull * dt : gravity * dt;
+  mg.markerVel = Math.max(-1, Math.min(1, mg.markerVel));
+  mg.markerPos += mg.markerVel * dt;
+  mg.markerPos = Math.max(0, Math.min(1, mg.markerPos));
+
+  // Zone movement (bounces)
+  mg.zonePos += mg.zoneVel;
+  if (mg.zonePos + mg.zoneSize > 1) { mg.zonePos = 1 - mg.zoneSize; mg.zoneVel = -Math.abs(mg.zoneVel); }
+  if (mg.zonePos < 0)               { mg.zonePos = 0;                mg.zoneVel =  Math.abs(mg.zoneVel); }
+
+  // Is marker in zone?
+  const inZone = mg.markerPos >= mg.zonePos && mg.markerPos <= mg.zonePos + mg.zoneSize;
+  if (inZone)    mg.progress = Math.min(100, mg.progress + 20 * dt);
+  else            mg.progress = Math.max(0,   mg.progress - 15 * dt);
+
+  // Render
+  const barW = document.getElementById('mg-bar').offsetWidth;
+  document.getElementById('mg-zone').style.left   = (mg.zonePos * barW) + 'px';
+  document.getElementById('mg-zone').style.width  = (mg.zoneSize * barW) + 'px';
+  document.getElementById('mg-marker').style.left = (mg.markerPos * (barW - 6)) + 'px';
+
+  const pct = Math.round(mg.progress);
+  document.getElementById('mg-progress').textContent = pct + '%';
+  document.getElementById('mg-progress').style.color = pct > 66 ? 'var(--success)' : pct > 33 ? 'var(--accent-warm)' : 'var(--danger)';
+
+  if (mg.progress >= 100) { endMinigame(true);  return; }
+  if (mg.progress <= 0 && mg.markerPos <= 0.02) { endMinigame(false); return; }
+
+  mg.animFrame = requestAnimationFrame(minigameLoop);
+}
+
+function cancelMinigame() {
+  mg.active = false;
+  if (mg.animFrame) cancelAnimationFrame(mg.animFrame);
+  removeMgListeners();
+}
+
+function removeMgListeners() {
+  document.removeEventListener('keydown', mgKeyDown);
+  document.removeEventListener('keyup', mgKeyUp);
+  const bar = document.getElementById('mg-bar');
+  if (bar) {
+    bar.removeEventListener('mousedown', mgMouseDown);
+    bar.removeEventListener('mouseup', mgMouseUp);
+    bar.removeEventListener('touchstart', mgTouchStart);
+    bar.removeEventListener('touchend', mgTouchEnd);
+  }
+}
+
+async function endMinigame(caught) {
+  mg.active = false;
+  removeMgListeners();
+  if (mg.animFrame) cancelAnimationFrame(mg.animFrame);
+
+  document.getElementById('minigame-container').classList.remove('active');
+  fishingState = 'idle';
+
+  if (caught) {
+    await catchFish(currentFish);
+  } else {
+    setFishingStatus(`${currentFish.name} escaped! 💨`, 'missed');
+    toast(`${currentFish.name} got away!`, 'error');
+    document.getElementById('cast-btn').disabled = false;
+    setTimeout(() => {
+      setFishingStatus('Cast your line to begin!', '');
+    }, 2000);
+  }
+}
+
+async function catchFish(fish) {
+  const p = getPlayer();
+  const rarityIdx = RARITIES.indexOf(fish.rarity);
+  const xpGain = Math.round(fish.baseXP * RARITY_XP_MULT[rarityIdx]);
+  const coinVal = getMarketPrice(fish.id, gameData.globalStats);
+
+  const oldLevel = levelFromXP(p.xp).level;
+
+  // Update player data
+  p.xp += xpGain;
+  p.totalCaught++;
+  if (!p.inventory[fish.id]) p.inventory[fish.id] = 0;
+  const isNewCatch = p.inventory[fish.id] === 0;
+  p.inventory[fish.id]++;
+
+  // Update global stats
+  if (!gameData.globalStats.fishCounts[fish.id]) gameData.globalStats.fishCounts[fish.id] = 0;
+  gameData.globalStats.fishCounts[fish.id]++;
+  gameData.globalStats.totalCaught++;
+
+  const newLevel = levelFromXP(p.xp).level;
+
+  setFishingStatus(`Caught a ${fish.name}! 🎉`, 'caught');
+
+  // Show catch modal
+  showCatchModal(fish, xpGain, coinVal, isNewCatch);
+
+  // Save
+  await saveGame();
+
+  // Check level up
+  if (newLevel > oldLevel) {
+    toast(`🎉 LEVEL UP! You are now Level ${newLevel}!`, 'gold');
+  }
+
+  renderFishingScreen();
+}
+
+function showCatchModal(fish, xpGain, coinVal, isNew) {
+  const rarityClass = `rarity-${fish.rarity.toLowerCase()}`;
+  const glowClass   = `glow-${fish.rarity.toLowerCase()}`;
+
+  document.getElementById('catch-emoji').textContent = fish.emoji;
+  document.getElementById('catch-name').textContent  = fish.name;
+  document.getElementById('catch-name').className    = `catch-fish-name ${rarityClass}`;
+
+  const tag = document.getElementById('catch-rarity');
+  tag.textContent = fish.rarity;
+  tag.className = `catch-rarity-tag ${rarityClass}`;
+
+  document.getElementById('catch-xp').textContent  = `+${xpGain} XP`;
+  document.getElementById('catch-val').textContent = `${coinVal}🪙`;
+
+  const badge = document.getElementById('catch-new-badge');
+  badge.style.display = isNew ? 'inline-block' : 'none';
+  if (isNew) badge.className = `catch-new-badge ${rarityClass}`;
+
+  const card = document.getElementById('catch-card');
+  card.className = `panel catch-card ${glowClass}`;
+
+  document.getElementById('catch-modal').classList.add('active');
+}
+
+function closeCatchModal() {
+  document.getElementById('catch-modal').classList.remove('active');
+  document.getElementById('cast-btn').disabled = false;
+  setFishingStatus('Cast your line to begin!', '');
+}
+
+function setFishingStatus(text, cls) {
+  const el = document.getElementById('fishing-status');
+  el.textContent = text;
+  el.className = 'fishing-status' + (cls ? ' ' + cls : '');
+}
+
+// ============================================================
+// INVENTORY
+// ============================================================
+function renderInventory() {
+  const p = getPlayer();
+  const grid = document.getElementById('inventory-grid');
+  if (!p) { grid.innerHTML = '<div class="inv-empty">Login to fish!</div>'; return; }
+
+  const items = Object.entries(p.inventory).filter(([,qty]) => qty > 0);
+  document.getElementById('inv-count').textContent = items.reduce((a,[,q])=>a+q,0);
+
+  if (items.length === 0) {
+    grid.innerHTML = '<div class="inv-empty">No fish yet — cast your line!</div>';
+    return;
+  }
+  grid.innerHTML = items.map(([fishId, qty]) => {
+    const fish = getFishById(fishId);
+    if (!fish) return '';
+    const rc = `rarity-${fish.rarity.toLowerCase()}`;
+    return `<div class="inv-item ${rc}" style="border-color:var(--${rc.replace('rarity-','rarity-')})">
+      <span class="fish-icon">${fish.emoji}</span>
+      <span class="fish-name">${fish.name}</span>
+      <span class="fish-count">×${qty}</span>
+    </div>`;
+  }).join('');
+}
+
+// ============================================================
+// MARKET
+// ============================================================
+let marketQtys = {};
+
+function renderMarket() {
+  const p = getPlayer();
+  const grid = document.getElementById('market-grid');
+  document.getElementById('market-coins').textContent = p ? p.coins : 0;
+
+  if (!p) { grid.innerHTML = '<div class="market-empty">Login to trade!</div>'; return; }
+
+  const search = document.getElementById('market-search')?.value.toLowerCase() || '';
+  const items = Object.entries(p.inventory)
+    .filter(([,qty]) => qty > 0)
+    .map(([fishId, qty]) => ({ fish: getFishById(fishId), qty, fishId }))
+    .filter(({fish}) => fish && fish.name.toLowerCase().includes(search));
+
+  if (items.length === 0) {
+    grid.innerHTML = '<div class="market-empty">No fish in inventory! Go fishing first.</div>';
+    return;
+  }
+
+  grid.innerHTML = items.map(({ fish, qty, fishId }) => {
+    const price = getMarketPrice(fishId, gameData.globalStats);
+    const rc = `rarity-${fish.rarity.toLowerCase()}`;
+    if (!marketQtys[fishId]) marketQtys[fishId] = 1;
+    const sellQty = Math.min(marketQtys[fishId], qty);
+    return `<div class="market-item">
+      <div class="fish-icon ${rc}">${fish.emoji}</div>
+      <div class="market-item-info">
+        <div class="market-item-name ${rc}">${fish.name}</div>
+        <div class="market-item-detail">${fish.rarity} · Own: ${qty} · Each: ${price}🪙</div>
+      </div>
+      <div class="market-item-qty">
+        <button class="qty-btn" onclick="changeMarketQty('${fishId}', -1)">−</button>
+        <span class="qty-display" id="mq-${fishId}">${sellQty}</span>
+        <button class="qty-btn" onclick="changeMarketQty('${fishId}', 1)">+</button>
+      </div>
+      <div>
+        <div class="market-item-price">${price * sellQty}🪙</div>
+        <button class="btn btn-success market-sell-btn" onclick="sellFish('${fishId}')">Sell</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function changeMarketQty(fishId, delta) {
+  const p = getPlayer();
+  if (!p) return;
+  const max = p.inventory[fishId] || 1;
+  marketQtys[fishId] = Math.max(1, Math.min(max, (marketQtys[fishId] || 1) + delta));
+  renderMarket();
+}
+
+async function sellFish(fishId) {
+  const p = getPlayer();
+  if (!p) return;
+  const qty = Math.min(marketQtys[fishId] || 1, p.inventory[fishId] || 0);
+  if (qty <= 0) return;
+  const price = getMarketPrice(fishId, gameData.globalStats);
+  const earned = price * qty;
+  p.inventory[fishId] -= qty;
+  if (p.inventory[fishId] <= 0) delete p.inventory[fishId];
+  p.coins += earned;
+  await saveGame();
+  toast(`Sold ${qty}× ${getFishById(fishId)?.name} for ${earned}🪙`, 'success');
+  renderMarket();
+  updateMenuHUD();
+}
+
+async function sellAll() {
+  const p = getPlayer();
+  if (!p) return;
+  const items = Object.entries(p.inventory).filter(([,qty]) => qty > 0);
+  if (items.length === 0) { toast('Nothing to sell!', 'error'); return; }
+  let total = 0;
+  for (const [fishId, qty] of items) {
+    total += getMarketPrice(fishId, gameData.globalStats) * qty;
+  }
+  p.inventory = {};
+  p.coins += total;
+  await saveGame();
+  toast(`Sold everything for ${total}🪙!`, 'gold');
+  renderMarket();
+  updateMenuHUD();
+}
+
+// ============================================================
+// FISH INDEX
+// ============================================================
+function renderIndex() {
+  const p = getPlayer();
+  const search = document.getElementById('index-search')?.value.toLowerCase() || '';
+  const rarityFilter = document.getElementById('index-rarity-filter')?.value || '';
+  const sort = document.getElementById('index-sort')?.value || 'rarity';
+
+  let list = [...FISH_DATABASE];
+  if (search) list = list.filter(f => f.name.toLowerCase().includes(search));
+  if (rarityFilter) list = list.filter(f => f.rarity === rarityFilter);
+
+  const RARITY_ORDER = { Common:0, Uncommon:1, Rare:2, Epic:3, Legendary:4, Mythic:5 };
+  if (sort === 'rarity') list.sort((a,b) => RARITY_ORDER[a.rarity] - RARITY_ORDER[b.rarity]);
+  if (sort === 'value')  list.sort((a,b) => b.baseCoins - a.baseCoins);
+  if (sort === 'xp')     list.sort((a,b) => b.baseXP - a.baseXP);
+  if (sort === 'name')   list.sort((a,b) => a.name.localeCompare(b.name));
+
+  const grid = document.getElementById('index-grid');
+  grid.innerHTML = list.map(fish => {
+    const rc = `rarity-${fish.rarity.toLowerCase()}`;
+    const gc = `glow-${fish.rarity.toLowerCase()}`;
+    const caught = p && p.inventory[fish.id] ? p.inventory[fish.id] : 0;
+    const globalCatch = (gameData.globalStats.fishCounts[fish.id]) || 0;
+    const price = getMarketPrice(fish.id, gameData.globalStats);
+    const unlocked = caught > 0 || (p && p.totalCaught > 5); // locked until seen
+    return `<div class="index-card ${gc} ${unlocked ? '' : 'locked'}" style="border-color:var(--${rc.replace('rarity-','rarity-')})">
+      ${caught > 0 ? '<div class="index-caught-badge">✓</div>' : ''}
+      <span class="index-card-emoji">${unlocked ? fish.emoji : '❓'}</span>
+      <div class="index-card-name ${rc}">${unlocked ? fish.name : '???'}</div>
+      <div class="index-card-rarity ${rc}">${fish.rarity}</div>
+      ${unlocked ? `<div class="index-card-stats">
+        <span>XP: ${fish.baseXP * RARITY_XP_MULT[RARITIES.indexOf(fish.rarity)]}</span>
+        <span>Value: ~${price}🪙</span>
+        <span>Global: ${globalCatch} caught</span>
+        <span>Yours: ${caught}</span>
+      </div>` : '<div class="index-card-stats"><span>Keep fishing!</span></div>'}
+    </div>`;
+  }).join('');
+}
+
+// ============================================================
+// LEADERBOARD
+// ============================================================
+let currentLbTab = 'coins';
+
+function switchLbTab(tab) {
+  currentLbTab = tab;
+  ['coins','level','caught'].forEach(t => {
+    const btn = document.getElementById(`lb-tab-${t}`);
+    if (btn) btn.classList.toggle('active', t === tab);
+  });
+  renderLeaderboard(tab);
+}
+
+function renderLeaderboard(tab) {
+  const list = document.getElementById('lb-list');
+  const players = Object.entries(gameData.players)
+    .filter(([,p]) => p.coins !== undefined)
+    .map(([username, p]) => {
+      const { level } = levelFromXP(p.xp || 0);
+      return { username, coins: p.coins || 0, level, caught: p.totalCaught || 0 };
+    });
+
+  let sorted;
+  if (tab === 'coins')  sorted = players.sort((a,b) => b.coins - a.coins);
+  if (tab === 'level')  sorted = players.sort((a,b) => b.level - a.level);
+  if (tab === 'caught') sorted = players.sort((a,b) => b.caught - a.caught);
+
+  if (sorted.length === 0) {
+    list.innerHTML = '<div class="lb-empty">No players yet!</div>';
+    return;
+  }
+
+  list.innerHTML = sorted.slice(0, 20).map((p, i) => {
+    const rank = i + 1;
+    const rankClass = rank === 1 ? 'gold' : rank === 2 ? 'silver' : rank === 3 ? 'bronze' : '';
+    const isYou = p.username === currentUser;
+    const val = tab === 'coins' ? `${p.coins}🪙` : tab === 'level' ? `Lv.${p.level}` : `${p.caught}🐟`;
+    return `<div class="lb-row ${isYou ? 'lb-you' : ''}">
+      <div class="lb-rank ${rankClass}">${rank}</div>
+      <div class="lb-name">${p.username}${isYou ? ' <span style="font-size:0.6rem;color:var(--neon-cyan)">(you)</span>' : ''}</div>
+      <div class="lb-val">${val}</div>
+    </div>`;
+  }).join('');
+}
+
+// ============================================================
+// SAVE
+// ============================================================
+async function saveGame() {
+  try {
+    await apiSave(gameData);
+  } catch(e) {
+    toast('Save failed — check connection', 'error');
+  }
+}
+
+// ============================================================
+// BUBBLES
+// ============================================================
+function createBubbles() {
+  const bg = document.getElementById('ocean-bg');
+  for (let i = 0; i < 12; i++) {
+    const b = document.createElement('div');
+    b.className = 'bubble';
+    const size = Math.random() * 16 + 4;
+    b.style.cssText = `
+      width:${size}px; height:${size}px;
+      left:${Math.random() * 100}%;
+      animation-duration:${Math.random() * 8 + 6}s;
+      animation-delay:-${Math.random() * 10}s;
+    `;
+    bg.appendChild(b);
+  }
+}
+
+// ============================================================
+// TOAST
+// ============================================================
+function toast(msg, type = '') {
+  const el = document.createElement('div');
+  el.className = `toast ${type}`;
+  el.textContent = msg;
+  document.getElementById('toast-container').appendChild(el);
+  setTimeout(() => el.remove(), 3200);
+}
+
+// ============================================================
+// START
+// ============================================================
+window.addEventListener('load', init);
+
+// Keyboard shortcut: Space to cast
+document.addEventListener('keydown', e => {
+  if (e.code === 'Space' && fishingState === 'idle' && document.getElementById('screen-fishing').classList.contains('active')) {
+    e.preventDefault();
+    startFishing();
+  }
+});
+</script>
+</body>
+</html>
